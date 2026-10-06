@@ -10,7 +10,7 @@ destination = root / 'deliverables'
 destination.mkdir(exist_ok=True)
 html = destination / 'gyeol-consult.html'
 shutil.copyfile(source, html)
-instructions = '''결 · 피부 상담 프로그램 v0.3
+instructions = '''결 · 피부 상담 프로그램 v0.4
 
 1. ZIP 압축을 풀어 주세요.
 2. gyeol-consult.html 파일을 Chrome 또는 Edge에서 열어 주세요.
@@ -18,6 +18,9 @@ instructions = '''결 · 피부 상담 프로그램 v0.3
 4. [새 상담 시작]을 누르고 실제 상담을 시작하세요.
 
 별도 설치나 서버 없이 사용하는 단일 HTML 프로그램입니다.
+정면 얼굴 일러스트는 HTML에 포함되어 있습니다. 그림의 실제 부위나
+번호를 눌러 관련 평가 항목을 찾을 수 있습니다. 그림은 참고 일러스트이며
+환자의 실제 사진·측정 자료가 아닙니다.
 상담 내용은 자동 저장되지 않습니다. 새로고침하거나 창을 닫기 전에
 [상담 요약]에서 복사 또는 인쇄/PDF로 필요한 기록을 남겨 주세요.
 
@@ -39,7 +42,7 @@ instructions = '''결 · 피부 상담 프로그램 v0.3
 이는 장비 기전·효과를 확정하는 진단이나 보편적인 치료 지침이 아닙니다.
 '''
 (destination / '사용방법.txt').write_text(instructions, encoding='utf-8')
-archive = destination / 'gyeol-consult-v3.zip'
+archive = destination / 'gyeol-consult-v4.zip'
 with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as bundle:
     bundle.write(html, arcname='gyeol-consult.html')
     bundle.writestr('사용방법.txt', instructions)

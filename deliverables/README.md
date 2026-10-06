@@ -1,8 +1,8 @@
-# 결 · 상담 프로그램 v3 받기
+# 결 · 상담 프로그램 v4 받기
 
-[최신 ZIP 다운로드](https://github.com/acehak/practice01/raw/refs/heads/consultation-v2/deliverables/gyeol-consult-v3.zip)
+[최신 ZIP 다운로드](https://github.com/acehak/practice01/raw/refs/heads/consultation-v2/deliverables/gyeol-consult-v4.zip)
 
-압축을 풀고 `gyeol-consult.html`을 Chrome 또는 Edge에서 열어 주세요. 설치나 서버가 필요하지 않습니다. 하늘 배경 그림도 파일에 포함되어 있습니다.
+압축을 풀고 `gyeol-consult.html`을 Chrome 또는 Edge에서 열어 주세요. 설치나 서버가 필요하지 않습니다. 사실적인 정면 얼굴 일러스트도 파일에 포함되어 있습니다. 얼굴의 실제 영역을 눌러 부위를 선택할 수 있습니다.
 
 **예시 상담 보기**는 가상의 점수와 복합 원인을 불러옵니다. **새 상담 시작**을 눌러 실제 상담을 시작하세요.
 
@@ -10,4 +10,4 @@
 
 상담 내용은 자동 저장되지 않습니다. 창을 닫기 전에 **상담 요약**에서 복사 또는 인쇄/PDF로 기록하세요.
 
-`gyeol-consult-v2.zip`은 이전 버전입니다. 최신 기능과 디자인은 v3 ZIP에 있습니다.
+`gyeol-consult-v2.zip`과 `gyeol-consult-v3.zip`은 이전 버전입니다. 최신 얼굴 일러스트와 디자인은 v4 ZIP에 있습니다.

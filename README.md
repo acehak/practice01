@@ -6,7 +6,7 @@
 
 `npm run build`로 만든 `dist/gyeol-consult.html`을 브라우저에서 열면 설치나 서버 없이 사용할 수 있습니다. 처음에는 모든 항목이 미평가입니다. **예시 상담 보기**로 가상 상담 흐름을 확인하세요. 공유용 HTML·ZIP은 `npm run package:app`으로 `deliverables/`에 생성합니다(패키징에는 Python 3 필요).
 
-[프로그램 v3 ZIP 다운로드](https://github.com/acehak/practice01/raw/refs/heads/consultation-v2/deliverables/gyeol-consult-v3.zip) → 압축을 풀고 `gyeol-consult.html`을 Chrome 또는 Edge에서 엽니다. 하늘 그림도 HTML에 포함되어 별도로 받지 않아도 됩니다. [디자인 미리보기](deliverables/preview-v3.png)도 확인할 수 있습니다.
+[프로그램 v4 ZIP 다운로드](https://github.com/acehak/practice01/raw/refs/heads/consultation-v2/deliverables/gyeol-consult-v4.zip) → 압축을 풀고 `gyeol-consult.html`을 Chrome 또는 Edge에서 엽니다. 사실적인 정면 얼굴 일러스트가 HTML에 포함되어 별도로 받지 않아도 됩니다. [디자인 미리보기](deliverables/preview-v4.png)도 확인할 수 있습니다.
 
 ## 개발 및 검증
 
@@ -25,7 +25,7 @@ npm run build
 
 ## 상담 흐름
 
-1. 얼굴 그림이나 부위 버튼으로 관련 평가 항목을 찾습니다. 부위 선택은 필터이며, 점수와 추천은 항목 단위입니다.
+1. 얼굴 그림의 실제 영역, 번호 또는 부위 버튼으로 관련 평가 항목을 찾습니다. 눈가·양볼·턱선은 좌우가 함께 표시됩니다. 얼굴 그림은 부위 선택용 참고 일러스트입니다. 부위 선택은 필터이며, 점수와 추천은 항목 단위입니다.
 2. 9개 항목을 구체적인 관찰 기준에 따라 0–4점으로 기록합니다. **미평가와 0점**은 구분됩니다.
 3. 항목별 **진찰 소견**으로 원인·유형을 구분하고 환자의 피부 반응, 회복 여유, 시술 선호를 입력합니다. 별표는 환자가 원하는 상담 우선순위입니다.
 4. 기본 플랜은 원인별 평가·관리·시술 후보입니다. 처짐 원인은 여러 개 선택할 수 있고, 확장 플랜에는 복수 원인에 맞는 시술 조합을 제시합니다. 확장 플랜의 **의료진이 직접 조합하기**에서 기본·확장 시술 후보 2개 이상을 골라 서로 다른 항목을 함께 검토할 수도 있습니다. 의료진이 조합의 적합성·부위·시행 순서를 검토합니다.
