@@ -82,7 +82,7 @@ export const SAMPLE_SCORES = {
 export const CLINIC_TREATMENTS = [
   { id: 'ultherapy-prime', label: '울쎄라피 프라임', type: 'device', description: '근막층 처짐·이완 진찰 소견에 따른 병원 설정 후보. 얼굴의 지방 분포·피부 두께·지지 구조와 해당 장비·부위의 허가·적응증을 확인합니다.' },
   { id: 'thermage-flx', label: '써마지 FLX', type: 'device', description: '진피의 피부 탄력·잔주름 항목에서 검토하는 고주파 기반 후보. 피부 상태·두께와 해당 장비·부위의 허가·적응증을 확인합니다.' },
-  { id: 'sofwave', label: '소프웨이브', type: 'device', description: '초음파 기반 탄력 치료 후보. 적용 부위와 적응증을 확인합니다.' },
+  { id: 'sofwave', label: '소프웨이브', type: 'device', description: '피부 탄력·잔주름의 초음파 기반 후보. 의사가 더 짙은 정적 주름으로 구분하면 병원 선호 기준상 우선 검토하며 비교 효과를 보장하지 않습니다. 적용 부위와 적응증을 확인합니다.' },
   { id: 'onda', label: '온다', type: 'device', description: '지방 관련 윤곽 치료 후보. 원인이 지방인지와 해당 부위의 허가·적응증을 먼저 확인합니다.' },
   { id: 'titanium', label: '티타늄', type: 'device', description: '유지인대 지지 저하 소견의 병원 상담 기준상 후보. 이 연결은 장비의 유지인대 치료 기전이나 효과를 확정하지 않습니다. 색소·혈관 전용 치료로 대체 해석하지 않고 피부 두께·지방 분포와 정확한 장비·부위의 허가·적응증을 확인합니다.' },
   { id: 'potenza', label: '포텐자', type: 'device', description: '피부결·모공·흉터 치료 후보. 현재 염증, 피부 특성과 해당 모드의 적응증을 확인합니다.' },
@@ -104,7 +104,8 @@ export const CLINIC_PROTOCOL = {
     { subtype: 'ligament', label: '유지인대 지지 저하', treatment: '티타늄' },
     { subtype: 'fat', label: '지방 볼륨 과다', treatment: '온다' },
   ],
-  dermal: { categoryId: 'wrinkles', subtype: 'laxity', label: '피부 탄력 저하', treatment: '써마지 FLX' },
+  dermal: { categoryId: 'wrinkles', subtype: 'laxity', label: '피부 탄력·잔주름', treatment: '써마지 FLX', treatments: ['써마지 FLX', '소프웨이브'] },
+  pronounced: { categoryId: 'wrinkles', subtype: 'pronounced', label: '더 짙은 정적 주름', treatment: '소프웨이브', treatments: ['소프웨이브', '써마지 FLX'], preference: '병원 선호 기준: 소프웨이브 우선 검토' },
 };
 
 export const PROFILE_FIELDS = [
@@ -128,11 +129,20 @@ export const SUBTYPE_FIELDS = {
   pigment: { label: '색소 유형', options: subtypeOptions(['melasma', '기미 양상'], ['spots', '국소 잡티 양상'], ['pih', '염증 후 색소 양상'], ['mixed', '복합 색소']) },
   redness: { label: '붉은기 유형', options: subtypeOptions(['vascular', '혈관성 양상'], ['inflammatory', '염증성 양상']) },
   texture: { label: '피부결 유형', options: subtypeOptions(['pores', '모공 중심'], ['atrophic', '위축성 흉터 중심'], ['mixed', '모공·흉터 복합']) },
-  wrinkles: { label: '주름·탄력 유형', options: subtypeOptions(['dynamic', '표정 주름'], ['static', '정적 잔주름'], ['laxity', '탄력 저하']) },
+  wrinkles: { label: '주름·탄력 유형', options: subtypeOptions(['dynamic', '표정 주름'], ['static', '정적 잔주름'], ['laxity', '탄력 저하'], ['pronounced', '더 짙은 정적 주름']) },
   lifting: { label: '진찰로 확인한 처짐 원인', options: subtypeOptions(['fascia', '근막층 처짐·이완'], ['ligament', '유지인대 지지 저하'], ['fat', '지방 볼륨 과다'], ['volume', '볼륨·지지 부족 동반']) },
   contour: { label: '윤곽 관련 요소', options: subtypeOptions(['muscle', '근육 관련'], ['fat', '지방 관련'], ['skeletal', '골격 관련']) },
   volume: { label: '볼륨 변화 범위', options: subtypeOptions(['localized', '국소 꺼짐'], ['diffuse', '넓은 볼륨·지지 변화']) },
 };
+
+/** Explicit empty selections clear legacy single-cause values. Never infer causes from scores. */
+export function normalizeLiftingCauses(profile = {}) {
+  const input = profile && typeof profile === 'object' ? profile : {};
+  const chosen = Array.isArray(input.liftingCauses) ? input.liftingCauses : [input.subtypes?.lifting];
+  return SUBTYPE_FIELDS.lifting.options
+    .filter(({ value }) => value !== 'unknown' && chosen.includes(value))
+    .map(({ value }) => value);
+}
 
 /** Clamp valid numeric input to the available ordinal scale; preserve missingness. */
 export function normalizeScore(value) {
@@ -170,9 +180,9 @@ const OPTIONS = {
   },
   wrinkles: {
     basic: ['보습·자외선 차단 + 주름 유형 평가', '표정 주름과 정적 주름, 건조에 따른 잔주름을 구분하고 보습·자외선 차단 관리를 상담합니다.'],
-    extended: ['주름·탄력 유형별 시술 선택', '표정 주름이 확인되면 보톡스, 피부 탄력 변화에는 써마지 FLX·소프웨이브, 피부 상태에 따라 리쥬란·리투오·힐로웨이브 중 적합한 후보를 검토합니다. 각 후보는 대체 선택지이며 모두 병합하지 않습니다. 제품·장비별 허가와 적응증을 확인합니다.'],
-    treatments: ['보톡스', '써마지 FLX', '소프웨이브', '리쥬란', '리투오', '힐로웨이브'],
-    risk: 'procedure',
+    extended: ['진찰로 주름·탄력 유형 확인', '유형이 미확인이므로 표정 주름·정적 잔주름·피부 탄력 저하·더 짙은 정적 주름을 의사가 먼저 구분합니다. 점수만으로 주름의 깊이나 원인을 추론하거나 장비·주입 시술을 연결하지 않습니다. 유형 확인 후 해당 원인의 기본 후보를 검토합니다.'],
+    treatments: [],
+    risk: 'clinical-review',
   },
   lifting: {
     basic: ['처짐 원인 확인 후 후보 선택', '근막층 처짐·이완, 유지인대 지지 저하, 지방 볼륨 과다와 볼륨·지지 부족을 진찰로 구분합니다. 원인이 미확인이므로 개별 시술 후보를 연결하지 않습니다. 점수는 관찰 정도이며 원인이나 장비 선택을 결정하지 않습니다.'],
@@ -205,7 +215,14 @@ const OPTIONS = {
 
 function normalizeProfile(profile) {
   const input = profile && typeof profile === 'object' ? profile : {};
-  const result = { subtypes: {} };
+  const clinicLabels = new Set(CLINIC_TREATMENTS.map(({ label }) => label));
+  const result = {
+    subtypes: {}, liftingCauses: normalizeLiftingCauses(input),
+    combinationTreatments: Array.isArray(input.combinationTreatments)
+      ? [...new Set(input.combinationTreatments.filter((label) => clinicLabels.has(label)))] : [],
+    invalidCombinationSelection: Array.isArray(input.combinationTreatments)
+      && input.combinationTreatments.some((label) => !clinicLabels.has(label)),
+  };
   for (const field of PROFILE_FIELDS) {
     result[field.id] = field.options.some(({ value }) => value === input[field.id]) ? input[field.id] : 'unknown';
   }
@@ -262,15 +279,28 @@ function personalizedOptions(categoryId, profile) {
     result.treatments = [];
     result.risk = 'clinical-review';
   } else if (categoryId === 'wrinkles' && subtype === 'static') {
-    result.basic = ['정적 잔주름의 피부 상태 평가', '안정 시 주름과 건조·피부결·꺼짐을 구분하고 보습과 자외선 차단 관리를 상담합니다.'];
-    result.extended = ['정적 잔주름의 피부 주입 후보 선택', '리쥬란·리투오·힐로웨이브 중 피부 상태와 실제 제품 허가·적응증에 맞는 후보를 검토합니다. 서로 대체 가능한 후보이며 모두 병합하지 않습니다. 깊은 구조성 주름은 별도 평가합니다.'];
-    result.treatments = ['리쥬란', '리투오', '힐로웨이브'];
-  } else if (categoryId === 'wrinkles' && subtype === 'laxity') {
-    result.basic = ['피부 탄력 저하의 써마지 FLX 후보 검토', '진피의 피부 탄력 변화와 피부 두께·지방 분포·자극 여부를 진찰로 확인하고 병원 상담 기준에 따라 써마지 FLX의 적합성을 검토합니다. 구조적 처짐과 구분하고 장비·부위의 허가·적응증을 확인합니다. 보톡스를 탄력 치료로 자동 추천하지 않습니다.'];
-    result.basicTreatments = ['써마지 FLX'];
+    result.basic = ['정적 잔주름의 써마지 FLX·소프웨이브 후보 선택', '안정 시 잔주름과 건조·피부결·꺼짐을 구분하고 병원 상담 기준에 따라 써마지 FLX와 소프웨이브 중 적합한 후보를 선택합니다. 두 장비는 이 원인에 대한 대안이며 동시 시행을 자동 제안하지 않습니다. 보습·자외선 차단과 피부 두께·부위별 허가·적응증을 확인합니다.'];
+    result.basicTreatments = ['써마지 FLX', '소프웨이브'];
     result.basicRisk = 'procedure';
-    result.extended = ['탄력 치료의 대체 초음파 후보 확인', '소프웨이브를 대체 후보로 검토하며 기본 기기와 모두 병합하는 필수 단계로 제시하지 않습니다. 피부 상태와 장비의 허가·적응증을 확인합니다.'];
-    result.treatments = ['소프웨이브'];
+    result.extended = ['잔주름에 동반된 피부 상태의 추가 후보 검토', '동반 건조·피부결 소견과 환자의 목표에 추가 치료가 필요한지 먼저 확인합니다. 리쥬란·리투오·힐로웨이브 중 실제 제품 허가·적응증에 맞는 후보를 선택할 수 있으며 기본 기기와의 병합 여부·순서·간격은 의사가 결정합니다. 모든 주입 후보를 함께 시행하는 플랜이 아닙니다.'];
+    result.treatments = ['리쥬란', '리투오', '힐로웨이브'];
+    result.risk = 'procedure';
+  } else if (categoryId === 'wrinkles' && subtype === 'laxity') {
+    result.basic = ['피부 탄력 저하의 써마지 FLX·소프웨이브 후보 선택', '진피의 피부 탄력 변화와 피부 두께·지방 분포·자극 여부를 진찰로 확인하고 병원 상담 기준에 따라 써마지 FLX와 소프웨이브 중 적합한 후보를 선택합니다. 두 장비는 이 원인에 대한 대안이며 동시 시행을 자동 제안하지 않습니다. 구조적 처짐과 구분하고 장비·부위의 허가·적응증을 확인합니다.'];
+    result.basicTreatments = ['써마지 FLX', '소프웨이브'];
+    result.basicRisk = 'procedure';
+    result.extended = ['탄력 저하에 동반된 다른 원인 재평가', '피부 탄력 외 근막층·유지인대·지방 볼륨·꺼짐 또는 피부결 변화가 함께 있는지 각각 평가합니다. 복수 원인이 확인되면 해당 원인별 기본 후보와 조합 필요성을 검토합니다. 단일 탄력 소견만으로 기기를 추가하지 않습니다.'];
+    result.treatments = [];
+    result.risk = 'clinical-review';
+  } else if (categoryId === 'wrinkles' && subtype === 'pronounced') {
+    result.basic = ['더 짙은 정적 주름의 소프웨이브 우선 검토', '의사가 더 짙은 정적 주름으로 구분한 경우 병원 선호 기준에 따라 소프웨이브를 우선 검토하고 써마지 FLX를 대안으로 남깁니다. 이는 장비 간 비교 효과를 확정하거나 보장하는 기준이 아닙니다. 깊은 접힘의 구조·꺼짐·근육 기여도를 구분하고 피부 두께·적용 부위·허가·적응증을 확인합니다. 두 장비를 함께 시행하는 기본 플랜이 아닙니다.'];
+    result.basicTreatments = ['소프웨이브', '써마지 FLX'];
+    result.preferredTreatment = '소프웨이브';
+    result.basicRisk = 'procedure';
+    result.extended = ['짙은 주름의 동반 구조·볼륨 요소 재평가', '짙은 주름에 동반된 꺼짐·표정 작용·처짐을 진찰로 별도 평가합니다. 추가 원인이 확인되면 각 원인의 기본 후보와 조합 필요성을 상담하며 점수만으로 주입이나 다른 기기를 자동 추가하지 않습니다.'];
+    result.treatments = [];
+    result.risk = 'clinical-review';
+    result.personalization.push('병원 선호 기준: 더 짙은 정적 주름에서는 소프웨이브를 우선 검토합니다.');
   }
   if (categoryId === 'lifting' && subtype === 'fascia') {
     result.basic = ['근막층 처짐의 울쎄라피 프라임 후보 검토', '의사가 근막층 처짐·이완 소견을 확인했을 때 병원 상담 기준에 따라 울쎄라피 프라임을 후보로 연결합니다. 지방 분포·피부 두께·지지 구조, 적용 부위와 장비의 허가·적응증을 확인합니다. 점수만으로 원인·시술 강도·샷 수를 결정하지 않습니다.'];
@@ -398,8 +428,15 @@ export function buildPlans(scores = {}, priorities = [], safety = {}, profile = 
     return sentences.filter(Boolean).join(' ');
   };
   const placeCandidate = (candidate, risk, destination, preconditions = []) => {
-    const safetyReasons = [...deferralReasons(risk), ...preconditions];
+    const safetyReasons = [...new Set([...deferralReasons(risk), ...preconditions])];
     const restricted = preferenceReasons.length ? candidate.treatments.filter((label) => injectableLabels.has(label) || label === '포텐자') : [];
+    if (candidate.kind === 'combination' && restricted.length) {
+      deferred.push({
+        ...candidate,
+        reason: [...safetyReasons, ...preferenceReasons, `조합 구성인 ${restricted.join('·')}의 검토가 필요해 전체 조합을 보류합니다. 허용된 일부 시술만 남겨 다른 조합으로 바꾸지 않습니다.`].join(' '),
+      });
+      return false;
+    }
     if (restricted.length) {
       const allowed = candidate.treatments.filter((label) => !restricted.includes(label));
       deferred.push({
@@ -424,26 +461,74 @@ export function buildPlans(scores = {}, priorities = [], safety = {}, profile = 
     return true;
   };
 
+  const placeBasic = (category, rationale, options, suffix = '') => {
+    const candidate = {
+      id: `${category.id}-basic${suffix}`, categoryId: category.id, title: options.basic[0],
+      rationale, detail: options.basic[1], requiresReview: true,
+      treatments: options.basicTreatments ? [...options.basicTreatments] : [],
+      personalization: [...options.personalization],
+      ...(suffix ? { kind: 'cause', causeIds: [suffix.slice(1)] } : {}),
+      ...(options.basicTreatments?.length > 1 ? { kind: 'alternatives' } : {}),
+      ...(options.preferredTreatment ? { preferredTreatment: options.preferredTreatment } : {}),
+    };
+    if (placeCandidate(candidate, options.basicRisk, basic)) return;
+    const fallback = options.fallback ?? [`${category.label} 원인 평가·보수적 관리`, '관찰 소견, 목표와 기존 치료를 확인하고 관리 가능한 요인을 상담합니다. 시술 후보는 개별 안전 조건과 선호를 검토한 뒤 다시 논의합니다.'];
+    const causeLabel = suffix && SUBTYPE_FIELDS.lifting.options.find(({ value }) => value === suffix.slice(1))?.label;
+    basic.push({
+      id: `${category.id}-assessment${suffix}`, categoryId: category.id,
+      title: causeLabel ? `${causeLabel} 평가·관리 상담` : fallback[0], rationale, detail: fallback[1],
+      requiresReview: true, treatments: [],
+      personalization: [...options.personalization, '시술 후보 보류 후 임상 평가·관리 상담을 기본 플랜에 유지했습니다.'],
+      ...(suffix ? { kind: 'cause', causeIds: [suffix.slice(1)] } : {}),
+    });
+  };
+
   for (const category of ordered) {
     const score = normalized[category.id];
     if (score === null || score === 0) continue;
     const options = personalizedOptions(category.id, normalizedProfile);
     const rationale = `${category.label} ${score}단계 · ${category.anchors[score]}`;
-    const basicCandidate = {
-      id: `${category.id}-basic`, categoryId: category.id, title: options.basic[0],
-      rationale, detail: options.basic[1], requiresReview: true,
-      treatments: options.basicTreatments ? [...options.basicTreatments] : [],
-      personalization: [...options.personalization],
-    };
-    if (!placeCandidate(basicCandidate, options.basicRisk, basic)) {
-      const fallback = options.fallback ?? [`${category.label} 원인 평가·보수적 관리`, '관찰 소견, 목표와 기존 치료를 확인하고 관리 가능한 요인을 상담합니다. 시술 후보는 개별 안전 조건과 선호를 검토한 뒤 다시 논의합니다.'];
-      basic.push({
-        id: `${category.id}-assessment`, categoryId: category.id,
-        title: fallback[0], rationale, detail: fallback[1],
-        requiresReview: true, treatments: [],
-        personalization: [...options.personalization, '시술 후보 보류 후 임상 평가·관리 상담을 기본 플랜에 유지했습니다.'],
+    if (category.id === 'lifting') {
+      const causes = normalizedProfile.liftingCauses;
+      if (!causes.length) {
+        const unconfirmed = personalizedOptions('lifting', { ...normalizedProfile, subtypes: { ...normalizedProfile.subtypes, lifting: 'unknown' } });
+        placeBasic(category, rationale, unconfirmed);
+        continue;
+      }
+      const components = causes.map((causeId) => {
+        const causeOptions = personalizedOptions('lifting', { ...normalizedProfile, subtypes: { ...normalizedProfile.subtypes, lifting: causeId } });
+        placeBasic(category, rationale, causeOptions, `-${causeId}`);
+        return {
+          causeId,
+          label: SUBTYPE_FIELDS.lifting.options.find(({ value }) => value === causeId).label,
+          treatment: causeOptions.basicTreatments[0],
+        };
       });
+      if (components.length > 1) {
+        const treatments = [...new Set(components.map(({ treatment }) => treatment))];
+        const detail = [
+          `진찰로 함께 확인한 ${components.map(({ label }) => label).join('·')}에 각각 대응하는 ${components.map(({ label, treatment }) => `${label} → ${treatment}`).join('; ')}를 조합 후보로 검토합니다.`,
+          '각 원인의 기본 후보를 먼저 평가하고 함께 치료할 필요가 있을 때만 확장 플랜으로 선택합니다. 동시 시행을 의미하지 않으며 적용 부위·순서·간격·중복 열손상 가능성과 기존 시술 이력을 의사가 판단합니다.',
+          treatments.includes('티타늄') ? '티타늄 연결은 병원 상담 기준이며 유지인대 치료 기전이나 효과를 확정하는 의미가 아닙니다.' : '',
+          treatments.includes('온다') ? '지방 볼륨과 적용 부위의 허가·적응증, 지방 감소 시 꺼짐 가능성을 확인합니다.' : '',
+          treatments.includes('필러') ? '필러 구성은 해부학적 위치·기존 주입 이력·혈관 관련 위험과 실제 제품 정보를 확인합니다.' : '',
+          '점수로 장비 강도·용량·시술 횟수를 결정하지 않습니다.',
+        ].filter(Boolean).join(' ');
+        placeCandidate({
+          id: `lifting-combination-${causes.join('-')}`, categoryId: 'lifting',
+          kind: 'combination', causeIds: [...causes], components,
+          combinationSource: 'confirmed-causes', categoryIds: ['lifting'],
+          title: `${treatments.join(' + ')} 조합 검토`, rationale, detail,
+          requiresReview: true, treatments,
+          personalization: [
+            `의사가 확인한 복수 원인: ${components.map(({ label }) => label).join(' + ')}.`,
+            ...options.personalization.filter((line) => !line.startsWith('유형 미확인:') && !line.startsWith('의사 선택 유형:')),
+          ],
+        }, 'procedure', extended);
+      }
+      continue;
     }
+    placeBasic(category, rationale, options);
     if (score < 2) continue;
     const candidate = {
       id: `${category.id}-extended`, categoryId: category.id, title: options.extended[0],
@@ -452,6 +537,58 @@ export function buildPlans(scores = {}, priorities = [], safety = {}, profile = 
       personalization: [...options.personalization],
     };
     placeCandidate(candidate, options.risk, extended, options.extendedPreconditions);
+  }
+
+  // Physician-selected combinations use current basic and extended candidates. A stale
+  // selection is never silently shortened into a different advertised combination.
+  const requested = normalizedProfile.combinationTreatments;
+  const activeSources = [...basic, ...extended].filter(({ kind }) => kind !== 'combination');
+  const deferredSources = deferred.filter(({ kind }) => kind !== 'combination');
+  const currentSourceLabels = new Set([...activeSources, ...deferredSources].flatMap(({ treatments }) => treatments));
+  const duplicateCauseCombination = [...extended, ...deferred].some((candidate) =>
+    candidate.kind === 'combination'
+    && candidate.treatments.length === requested.length
+    && requested.every((label) => candidate.treatments.includes(label)));
+  if (!normalizedProfile.invalidCombinationSelection && requested.length >= 2 && requested.every((label) => currentSourceLabels.has(label)) && !duplicateCauseCombination) {
+    const sourcesByTreatment = requested.map((treatment) => {
+      const active = activeSources.filter(({ treatments }) => treatments.includes(treatment));
+      return {
+        treatment,
+        sources: active.length ? active : deferredSources.filter(({ treatments }) => treatments.includes(treatment)),
+        deferred: active.length === 0,
+      };
+    });
+    const sources = [...new Set(sourcesByTreatment.flatMap(({ sources: linked }) => linked))];
+    const sourceDeferrals = [...new Set(sourcesByTreatment
+      .filter(({ deferred: blocked }) => blocked)
+      .flatMap(({ sources: linked }) => linked.map(({ reason }) => reason).filter(Boolean)))];
+    const categoryIds = [...new Set(requested.flatMap((label) => sources.filter(({ treatments }) => treatments.includes(label)).map(({ categoryId }) => categoryId)))];
+    const categoryNames = categoryIds.map((id) => CATEGORIES.find((category) => category.id === id).label);
+    const components = sourcesByTreatment.map(({ treatment, sources: matched }) => {
+      const related = [...new Set(matched.map(({ categoryId }) => categoryId))];
+      return {
+        treatment, categoryIds: related,
+        label: related.map((id) => CATEGORIES.find((category) => category.id === id).label).join('·'),
+        causeIds: [...new Set(matched.flatMap(({ causeIds }) => causeIds ?? []))],
+      };
+    });
+    const detail = [
+      `의사가 현재 기본·확장 후보에서 선택한 ${requested.join(' + ')}의 조합입니다. ${components.map(({ treatment, label }) => `${label} → ${treatment}`).join('; ')}의 목표와 추가 치료 필요성을 함께 검토합니다.`,
+      '한 원인에 대한 대안 장비를 함께 선택한 경우에도 각각의 필요성을 다시 확인합니다. 자동 병합이나 동시 시행을 의미하지 않습니다. 해부학적 위치·허가·적응증·순서·간격·중복 열손상 가능성과 기존 시술 이력을 의사가 판단합니다.',
+      requested.includes('티타늄') ? '티타늄 연결은 병원 상담 기준이며 유지인대 치료 기전이나 효과를 확정하는 의미가 아닙니다.' : '',
+      requested.includes('온다') ? '온다는 지방 관련 원인과 적용 부위의 허가·적응증, 꺼짐 가능성을 확인합니다.' : '',
+      requested.some((label) => injectableLabels.has(label)) ? '주입 구성은 실제 제품 정보·해부학적 위치·기존 주입 이력·혈관 관련 위험을 확인합니다.' : '',
+      '점수로 강도·용량·시술 횟수를 결정하지 않습니다.',
+    ].filter(Boolean).join(' ');
+    placeCandidate({
+      id: 'physician-combination', categoryId: categoryIds[0], categoryIds,
+      kind: 'combination', combinationSource: 'physician', components,
+      causeIds: [...new Set(components.flatMap(({ causeIds }) => causeIds))],
+      title: `${requested.join(' + ')} · 의사 선택 조합`,
+      rationale: `의사 선택 · ${categoryNames.join(' + ')}`, detail,
+      requiresReview: true, treatments: [...requested],
+      personalization: ['의사가 선택한 현재 시술 후보의 조합입니다. 각 구성의 필요성과 병합 적합성을 확인합니다.'],
+    }, 'procedure', extended, sourceDeferrals);
   }
 
   return {

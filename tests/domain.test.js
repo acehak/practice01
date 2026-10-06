@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CATEGORIES, ZONES, INITIAL_SCORES, SAMPLE_SCORES, CLINIC_TREATMENTS, CLINIC_PROTOCOL, PROFILE_FIELDS, SUBTYPE_FIELDS, normalizeScore, buildPlans,
+  CATEGORIES, ZONES, INITIAL_SCORES, SAMPLE_SCORES, CLINIC_TREATMENTS, CLINIC_PROTOCOL, PROFILE_FIELDS, SUBTYPE_FIELDS, normalizeScore, normalizeLiftingCauses, buildPlans,
 } from '../src/domain.js';
 
 test('category anchors and zone references are complete and unique', () => {
@@ -50,7 +50,7 @@ test('every positive score produces a basic candidate; zero and unassessed produ
     for (let score = 0; score <= 4; score += 1) {
       const plans = buildPlans({ [category.id]: score });
       assert.equal(plans.basic.length, score > 0 ? 1 : 0);
-      assert.equal(plans.extended.length + plans.deferred.length, score >= 2 ? 1 : 0);
+      assert.equal(plans.extended.length + plans.deferred.length, score >= 2 && category.id !== 'lifting' ? 1 : 0);
       if (score > 0) assert.equal(plans.basic[0].categoryId, category.id);
     }
   }
@@ -60,7 +60,7 @@ test('extended candidates have distinct clinical content and always require revi
   const scores = Object.fromEntries(CATEGORIES.map(({ id }) => [id, id === 'acne' ? 2 : 3]));
   const plans = buildPlans(scores);
   assert.equal(plans.basic.length, 9);
-  assert.equal(plans.extended.length, 9);
+  assert.equal(plans.extended.length, 8);
   for (const item of plans.extended) {
     const base = plans.basic.find(({ categoryId }) => categoryId === item.categoryId);
     assert.notEqual(item.title, base.title);
@@ -80,9 +80,10 @@ test('severe active acne defers elective procedures while keeping acne treatment
 });
 
 test('explicit inflammation defers procedures even when acne is unassessed', () => {
-  const plans = buildPlans({ wrinkles: 3, barrier: 2 }, [], { activeInflammation: true });
+  const plans = buildPlans({ wrinkles: 3, barrier: 2 }, [], { activeInflammation: true }, { subtypes: { wrinkles: 'static' } });
   assert.deepEqual(plans.extended.map(({ categoryId }) => categoryId), ['barrier']);
-  assert.deepEqual(plans.deferred.map(({ categoryId }) => categoryId), ['wrinkles']);
+  assert.deepEqual(plans.deferred.map(({ categoryId }) => categoryId), ['wrinkles', 'wrinkles']);
+  assert.ok(plans.deferred.every(({ reason }) => reason.includes('활동성 염증')));
 });
 
 test('pregnancy defers uncertain elective and prescription options, preserving clinical reviews', () => {
@@ -171,8 +172,9 @@ test('same wrinkle score maps clinical subtypes to different treatment subsets',
   assert.deepEqual(dynamic.basic[0].treatments, ['보톡스']);
   assert.deepEqual(dynamic.extended[0].treatments, []);
   assert.deepEqual(staticLines.extended[0].treatments, ['리쥬란', '리투오', '힐로웨이브']);
-  assert.deepEqual(laxity.basic[0].treatments, ['써마지 FLX']);
-  assert.deepEqual(laxity.extended[0].treatments, ['소프웨이브']);
+  assert.deepEqual(staticLines.basic[0].treatments, ['써마지 FLX', '소프웨이브']);
+  assert.deepEqual(laxity.basic[0].treatments, ['써마지 FLX', '소프웨이브']);
+  assert.deepEqual(laxity.extended[0].treatments, []);
   assert.ok(dynamic.basic[0].personalization.some((line) => line.includes('표정 주름')));
 });
 
@@ -197,7 +199,7 @@ test('same lifting score follows the physician-selected clinic mapping without a
   assert.deepEqual(fat.basic[0].treatments, ['온다']);
   assert.deepEqual(volume.basic[0].treatments, ['필러']);
   for (const plans of [fascia, ligament, fat, volume]) {
-    assert.deepEqual(plans.extended[0].treatments, []);
+    assert.equal(plans.extended.length, 0);
     assert.equal(plans.deferred.length, 0);
     assert.doesNotMatch(JSON.stringify(plans), /써마지|소프웨이브/);
     assert.match(plans.basic[0].detail, /허가·적응증|혈관 관련 위험/);
@@ -214,14 +216,16 @@ test('clinic protocol is explicit, uses available treatments, and distinguishes 
     { subtype: 'ligament', label: '유지인대 지지 저하', treatment: '티타늄' },
     { subtype: 'fat', label: '지방 볼륨 과다', treatment: '온다' },
   ]);
-  assert.deepEqual(CLINIC_PROTOCOL.dermal, { categoryId: 'wrinkles', subtype: 'laxity', label: '피부 탄력 저하', treatment: '써마지 FLX' });
+  assert.deepEqual(CLINIC_PROTOCOL.dermal, { categoryId: 'wrinkles', subtype: 'laxity', label: '피부 탄력·잔주름', treatment: '써마지 FLX', treatments: ['써마지 FLX', '소프웨이브'] });
+  assert.equal(CLINIC_PROTOCOL.pronounced.subtype, 'pronounced');
+  assert.equal(CLINIC_PROTOCOL.pronounced.treatment, '소프웨이브');
   assert.deepEqual(SUBTYPE_FIELDS.lifting.options.map(({ value }) => value), ['unknown', 'fascia', 'ligament', 'fat', 'volume']);
   const treatmentLabels = new Set(CLINIC_TREATMENTS.map(({ label }) => label));
   for (const entry of CLINIC_PROTOCOL.lifting) assert.ok(treatmentLabels.has(entry.treatment));
   const mixed = buildPlans({ wrinkles: 3, lifting: 3 }, [], {}, { subtypes: { wrinkles: 'laxity', lifting: 'fascia' } });
   assert.ok(mixed.basic.find(({ categoryId }) => categoryId === 'wrinkles').treatments.includes('써마지 FLX'));
   assert.deepEqual(mixed.basic.find(({ categoryId }) => categoryId === 'lifting').treatments, ['울쎄라피 프라임']);
-  assert.ok(mixed.extended.find(({ categoryId }) => categoryId === 'wrinkles').treatments.includes('소프웨이브'));
+  assert.ok(mixed.basic.find(({ categoryId }) => categoryId === 'wrinkles').treatments.includes('소프웨이브'));
 });
 
 test('skin elasticity and each structural lifting cause keep separate device subsets at the same score', () => {
@@ -246,7 +250,7 @@ test('unconfirmed or legacy lifting types never infer a device from the observed
       const candidates = [...plans.basic, ...plans.extended, ...plans.deferred];
       assert.ok(candidates.every(({ treatments }) => treatments.length === 0));
       assert.equal(plans.basic.length, lifting > 0 ? 1 : 0);
-      assert.equal(plans.extended.length, lifting >= 2 ? 1 : 0);
+      assert.equal(plans.extended.length, 0);
       if (lifting > 0) assert.match(plans.basic[0].detail, /원인이 미확인/);
       assert.doesNotMatch(JSON.stringify(candidates), /써마지|소프웨이브|울쎄라피|티타늄|온다|필러/);
     }
@@ -279,7 +283,7 @@ test('lifting mapping stays exact through every score, preference, and safety co
               assert.deepEqual(activeLabels, blocked ? [] : treatments, context);
               assert.deepEqual(plans.deferred.flatMap(({ treatments: labels }) => labels), blocked ? treatments : [], context);
               assert.equal(plans.basic.length, 1, context);
-              assert.equal(plans.extended.length, lifting >= 2 ? 1 : 0, context);
+              assert.equal(plans.extended.length, 0, context);
               if (treatments.length && blocked) assert.ok(plans.deferred[0].reason.length > 0, context);
             }
           }
@@ -302,7 +306,7 @@ test('severe active acne defers each structural lifting candidate and keeps asse
 });
 
 test('noninvasive preference keeps appropriate device alternatives and defers injections', () => {
-  const plans = buildPlans({ wrinkles: 3, lifting: 3, texture: 3 }, [], {}, { approach: 'noninvasive' });
+  const plans = buildPlans({ wrinkles: 3, lifting: 3, texture: 3, contour: 3 }, [], {}, { approach: 'noninvasive', subtypes: { wrinkles: 'laxity', contour: 'muscle' } });
   const active = [...plans.basic, ...plans.extended];
   assert.ok(active.some(({ treatments }) => treatments.includes('써마지 FLX')));
   const injectables = new Set(CLINIC_TREATMENTS.filter(({ type }) => type === 'injectable').map(({ label }) => label));
@@ -378,10 +382,10 @@ for (const preference of [{ approach: 'noninvasive' }, { downtime: 'minimal' }])
       assert.match(item.detail, /주입·미세침 후보는 보류/);
     }
     const support = buildPlans({ lifting: 3 }, [], {}, { ...preference, subtypes: { lifting: 'volume' } });
-    const filler = support.deferred.find(({ id }) => id === 'lifting-basic');
+    const filler = support.deferred.find(({ id }) => id === 'lifting-basic-volume');
     assert.match(filler.detail, /혈관 관련 위험/);
     assert.deepEqual(support.basic[0].treatments, []);
-    assert.deepEqual(support.extended[0].treatments, []);
+    assert.equal(support.extended.length, 0);
     assert.doesNotMatch(JSON.stringify(support), /써마지|소프웨이브/);
     // Reports consume these same serializable records; no stale broad description survives export.
     const report = JSON.parse(JSON.stringify(plans));
@@ -392,3 +396,277 @@ for (const preference of [{ approach: 'noninvasive' }, { downtime: 'minimal' }])
     }
   });
 }
+
+test('explicit lifting causes are normalized without inferring or reviving cleared selections', () => {
+  assert.deepEqual(normalizeLiftingCauses({ liftingCauses: ['fat', 'fascia', 'fat', 'bad', 'ligament'] }), ['fascia', 'ligament', 'fat']);
+  assert.deepEqual(normalizeLiftingCauses({ subtypes: { lifting: 'volume' } }), ['volume']);
+  assert.deepEqual(normalizeLiftingCauses({ liftingCauses: [], subtypes: { lifting: 'fascia' } }), []);
+  assert.deepEqual(normalizeLiftingCauses({ liftingCauses: ['unknown', null, 0] }), []);
+  assert.deepEqual(normalizeLiftingCauses(null), []);
+  const cleared = buildPlans({ lifting: 4 }, [], {}, { liftingCauses: [], subtypes: { lifting: 'fascia' } });
+  assert.deepEqual(cleared.basic[0].treatments, []);
+  assert.equal(cleared.extended.length, 0);
+});
+
+test('multiple confirmed lifting causes create individual basic options and one explicit combination', () => {
+  for (const [causes, treatments] of [
+    [['fascia', 'ligament'], ['울쎄라피 프라임', '티타늄']],
+    [['fascia', 'fat'], ['울쎄라피 프라임', '온다']],
+    [['fascia', 'ligament', 'fat'], ['울쎄라피 프라임', '티타늄', '온다']],
+  ]) {
+    for (let lifting = 1; lifting <= 4; lifting += 1) {
+      const plans = buildPlans({ lifting }, [], {}, { liftingCauses: causes });
+      assert.equal(plans.basic.length, causes.length);
+      assert.deepEqual(plans.basic.flatMap(({ treatments: labels }) => labels), treatments);
+      assert.ok(plans.basic.every(({ causeIds, kind, treatments: labels }) => kind === 'cause' && causeIds.length === 1 && labels.length === 1));
+      assert.equal(plans.extended.length, 1);
+      const combined = plans.extended[0];
+      assert.equal(combined.kind, 'combination');
+      assert.equal(combined.combinationSource, 'confirmed-causes');
+      assert.deepEqual(combined.causeIds, causes);
+      assert.deepEqual(combined.treatments, treatments);
+      assert.deepEqual(combined.components.map(({ treatment }) => treatment), treatments);
+      assert.deepEqual(combined.categoryIds, ['lifting']);
+      assert.ok(treatments.every((label) => combined.title.includes(label) && combined.detail.includes(label)));
+      assert.match(combined.detail, /순서·간격/);
+      assert.doesNotMatch(JSON.stringify(plans), /써마지|소프웨이브/);
+    }
+  }
+});
+
+test('unassessed or zero lifting creates no treatment despite multiple confirmed causes', () => {
+  for (const lifting of [null, undefined, '', 0]) {
+    const plans = buildPlans({ lifting }, [], {}, { liftingCauses: ['fascia', 'ligament', 'fat'] });
+    assert.equal(plans.basic.length + plans.extended.length + plans.deferred.length, 0);
+  }
+});
+
+test('a restricted lifting component defers the entire combination while preserving eligible basic options', () => {
+  for (const preference of [{ approach: 'noninvasive' }, { downtime: 'minimal' }]) {
+    const plans = buildPlans({ lifting: 3 }, [], {}, { ...preference, liftingCauses: ['fascia', 'volume'] });
+    assert.deepEqual(plans.basic.flatMap(({ treatments }) => treatments), ['울쎄라피 프라임']);
+    assert.equal(plans.basic.length, 2);
+    assert.equal(plans.extended.length, 0);
+    const combined = plans.deferred.find(({ kind }) => kind === 'combination');
+    assert.deepEqual(combined.treatments, ['울쎄라피 프라임', '필러']);
+    assert.match(combined.title, /울쎄라피 프라임 \+ 필러/);
+    assert.match(combined.reason, /전체 조합을 보류/);
+    assert.equal(plans.deferred.find(({ kind }) => kind === 'cause').treatments[0], '필러');
+  }
+});
+
+test('all lifting cause subsets preserve exact combinations through safety and preference gates', () => {
+  const ids = ['fascia', 'ligament', 'fat', 'volume'];
+  const labels = ['울쎄라피 프라임', '티타늄', '온다', '필러'];
+  for (let selected = 0; selected < 16; selected += 1) {
+    const causes = ids.filter((_, index) => selected & (1 << index));
+    const treatments = labels.filter((_, index) => selected & (1 << index));
+    for (let flags = 0; flags < 8; flags += 1) {
+      for (const preference of [{}, { approach: 'noninvasive' }, { downtime: 'minimal' }]) {
+        const safety = { pregnancy: Boolean(flags & 1), activeInflammation: Boolean(flags & 2), recentProcedure: Boolean(flags & 4) };
+        const plans = buildPlans({ lifting: 2 }, [], safety, { ...preference, liftingCauses: causes });
+        const all = [...plans.basic, ...plans.extended, ...plans.deferred];
+        assert.equal(new Set(all.map(({ id }) => id)).size, all.length);
+        assert.ok(all.every(({ treatments: current }) => current.every((label) => treatments.includes(label))));
+        const combination = all.find(({ kind }) => kind === 'combination');
+        assert.equal(Boolean(combination), causes.length > 1);
+        if (!combination) continue;
+        assert.deepEqual(combination.treatments, treatments);
+        const blocked = flags > 0 || (causes.includes('volume') && Object.keys(preference).length > 0);
+        assert.equal(plans.deferred.includes(combination), blocked);
+        assert.equal(plans.extended.includes(combination), !blocked);
+        assert.equal(combination.components.length, causes.length);
+        if (blocked) assert.ok(combination.reason.length > 0);
+      }
+    }
+  }
+});
+
+test('severe active acne also defers the entire confirmed lifting combination', () => {
+  const plans = buildPlans({ acne: 3, lifting: 3 }, [], {}, { liftingCauses: ['fascia', 'fat'] });
+  assert.ok(plans.basic.filter(({ categoryId }) => categoryId === 'lifting').every(({ treatments }) => treatments.length === 0));
+  assert.ok(!plans.extended.some(({ kind }) => kind === 'combination'));
+  const combined = plans.deferred.find(({ kind }) => kind === 'combination');
+  assert.deepEqual(combined.treatments, ['울쎄라피 프라임', '온다']);
+  assert.match(combined.reason, /활동성 염증/);
+});
+
+test('pronounced static wrinkles use explicit clinic preference rather than the severity score', () => {
+  for (let wrinkles = 1; wrinkles <= 4; wrinkles += 1) {
+    for (const subtype of ['static', 'laxity', 'pronounced']) {
+      const plans = buildPlans({ wrinkles }, [], {}, { subtypes: { wrinkles: subtype } });
+      const basic = plans.basic[0];
+      assert.equal(basic.kind, 'alternatives');
+      assert.deepEqual(basic.treatments, subtype === 'pronounced' ? ['소프웨이브', '써마지 FLX'] : ['써마지 FLX', '소프웨이브']);
+      assert.equal(basic.preferredTreatment, subtype === 'pronounced' ? '소프웨이브' : undefined);
+      if (subtype === 'pronounced') {
+        assert.match(basic.detail, /병원 선호 기준/);
+        assert.match(basic.detail, /비교 효과를 확정하거나 보장하는.*아닙니다/);
+      } else assert.match(basic.detail, /두 장비는 이 원인에 대한 대안/);
+      assert.ok(!plans.extended.some(({ kind }) => kind === 'combination'));
+    }
+  }
+  const blocked = buildPlans({ wrinkles: 1 }, [], { recentProcedure: true }, { subtypes: { wrinkles: 'pronounced' } });
+  assert.deepEqual(blocked.basic[0].treatments, []);
+  assert.deepEqual(blocked.deferred[0].treatments, ['소프웨이브', '써마지 FLX']);
+});
+
+test('unconfirmed wrinkle types never infer depth or invent device candidates from scores', () => {
+  for (const subtype of ['unknown', 'invalid', undefined]) {
+    for (let wrinkles = 1; wrinkles <= 4; wrinkles += 1) {
+      const plans = buildPlans({ wrinkles }, [], {}, { subtypes: { wrinkles: subtype }, combinationTreatments: ['써마지 FLX', '소프웨이브'] });
+      assert.ok([...plans.basic, ...plans.extended, ...plans.deferred].every(({ treatments }) => treatments.length === 0));
+      assert.ok(!plans.extended.some(({ kind }) => kind === 'combination'));
+      if (wrinkles >= 2) assert.match(plans.extended[0].detail, /점수만으로 주름의 깊이나 원인을 추론/);
+    }
+  }
+});
+
+test('physician selection enables cross-category combinations of actual current basic candidates', () => {
+  const profile = { liftingCauses: ['fascia'], subtypes: { wrinkles: 'laxity' }, combinationTreatments: ['울쎄라피 프라임', '소프웨이브'] };
+  const plans = buildPlans({ lifting: 1, wrinkles: 1 }, [], {}, profile);
+  const combined = plans.extended.find(({ combinationSource }) => combinationSource === 'physician');
+  assert.equal(combined.id, 'physician-combination');
+  assert.equal(combined.categoryId, 'lifting');
+  assert.deepEqual(combined.categoryIds, ['lifting', 'wrinkles']);
+  assert.deepEqual(combined.treatments, profile.combinationTreatments);
+  assert.ok(combined.components.every(({ label, categoryIds }) => label && categoryIds.length > 0));
+  assert.match(combined.detail, /의사가 현재 기본·확장 후보에서 선택/);
+  assert.match(combined.detail, /순서·간격/);
+  assert.ok(combined.requiresReview);
+});
+
+test('explicit physician choice is required to combine alternatives for the same wrinkle cause', () => {
+  const scores = { wrinkles: 2 };
+  const profile = { subtypes: { wrinkles: 'laxity' } };
+  assert.ok(!buildPlans(scores, [], {}, profile).extended.some(({ kind }) => kind === 'combination'));
+  const selected = buildPlans(scores, [], {}, { ...profile, combinationTreatments: ['써마지 FLX', '소프웨이브'] });
+  const combination = selected.extended.find(({ kind }) => kind === 'combination');
+  assert.deepEqual(combination.treatments, ['써마지 FLX', '소프웨이브']);
+  assert.match(combination.detail, /한 원인에 대한 대안 장비/);
+});
+
+test('manual combinations never add absent, duplicated, or stale treatment components', () => {
+  const scores = { lifting: 2 };
+  const profile = { liftingCauses: ['fascia'] };
+  for (const combinationTreatments of [[], ['울쎄라피 프라임'], ['울쎄라피 프라임', '울쎄라피 프라임'], ['울쎄라피 프라임', '포텐자'], ['울쎄라피 프라임', '온다', '써마지 FLX']]) {
+    const plans = buildPlans(scores, [], {}, { ...profile, combinationTreatments });
+    assert.ok(![...plans.extended, ...plans.deferred].some(({ combinationSource }) => combinationSource === 'physician'));
+  }
+  const duplicate = buildPlans(scores, [], {}, { liftingCauses: ['fascia', 'fat'], combinationTreatments: ['온다', '울쎄라피 프라임'] });
+  assert.equal(duplicate.extended.filter(({ kind }) => kind === 'combination').length, 1);
+  assert.equal(duplicate.extended[0].combinationSource, 'confirmed-causes');
+  const stale = buildPlans({ lifting: 0, wrinkles: 2 }, [], {}, { ...profile, subtypes: { wrinkles: 'laxity' }, combinationTreatments: ['울쎄라피 프라임', '써마지 FLX', '소프웨이브'] });
+  assert.ok(!stale.extended.some(({ kind }) => kind === 'combination'));
+});
+
+test('safety and preference gates atomically defer physician-selected combinations', () => {
+  const scores = { lifting: 2, volume: 2 };
+  const profile = { liftingCauses: ['fascia'], combinationTreatments: ['울쎄라피 프라임', '필러'] };
+  for (const [safety, preferences] of [
+    [{ pregnancy: true }, {}], [{ activeInflammation: true }, {}], [{ recentProcedure: true }, {}],
+    [{}, { approach: 'noninvasive' }], [{}, { downtime: 'minimal' }],
+  ]) {
+    const plans = buildPlans(scores, [], safety, { ...profile, ...preferences });
+    assert.ok(!plans.extended.some(({ combinationSource }) => combinationSource === 'physician'));
+    const combined = plans.deferred.find(({ combinationSource }) => combinationSource === 'physician');
+    assert.deepEqual(combined.treatments, ['울쎄라피 프라임', '필러']);
+    assert.match(combined.title, /울쎄라피 프라임 \+ 필러/);
+    assert.match(combined.detail, /혈관 관련 위험/);
+    assert.ok(combined.reason.length > 0);
+  }
+});
+
+test('multi-cause and manual-combination planning cannot mutate frozen caller data', () => {
+  const scores = Object.freeze({ lifting: 2, wrinkles: 2 });
+  const profile = Object.freeze({
+    liftingCauses: Object.freeze(['fat', 'fascia']),
+    combinationTreatments: Object.freeze(['온다', '소프웨이브']),
+    subtypes: Object.freeze({ wrinkles: 'pronounced' }),
+  });
+  const plans = buildPlans(scores, [], {}, profile);
+  assert.equal(plans.basic.length, 3);
+  const combined = plans.extended.find(({ combinationSource }) => combinationSource === 'physician');
+  combined.treatments.push('mutated');
+  combined.causeIds.push('mutated');
+  assert.deepEqual(profile.liftingCauses, ['fat', 'fascia']);
+  assert.deepEqual(profile.combinationTreatments, ['온다', '소프웨이브']);
+  assert.deepEqual(buildPlans(scores, [], {}, profile).extended.find(({ combinationSource }) => combinationSource === 'physician').treatments, ['온다', '소프웨이브']);
+});
+
+test('physician combinations include eligible extended device and injectable options', () => {
+  for (const [scores, subtypes, treatment] of [
+    [{ lifting: 1, texture: 2 }, { texture: 'pores' }, '포텐자'],
+    [{ lifting: 1, wrinkles: 2 }, { wrinkles: 'static' }, '리쥬란'],
+    [{ lifting: 1, wrinkles: 2 }, { wrinkles: 'static' }, '리투오'],
+    [{ lifting: 1, wrinkles: 2 }, { wrinkles: 'static' }, '힐로웨이브'],
+    [{ lifting: 1, volume: 2 }, { volume: 'localized' }, '고우리'],
+    [{ lifting: 1, volume: 2 }, { volume: 'localized' }, '레디어스'],
+  ]) {
+    const selected = ['울쎄라피 프라임', treatment];
+    const plans = buildPlans(scores, [], {}, { liftingCauses: ['fascia'], subtypes, combinationTreatments: selected });
+    assert.ok(plans.extended.some(({ kind, treatments }) => kind !== 'combination' && treatments.includes(treatment)));
+    const combined = plans.extended.find(({ combinationSource }) => combinationSource === 'physician');
+    assert.deepEqual(combined.treatments, selected);
+    assert.equal(combined.categoryIds.length, 2);
+    assert.equal(combined.categoryId, 'lifting');
+    assert.ok(combined.components[1].categoryIds.some((id) => id !== 'lifting'));
+    assert.equal(plans.deferred.length, 0);
+  }
+});
+
+test('physician selection can explicitly combine two extended options without source recursion', () => {
+  const plans = buildPlans({ texture: 2, wrinkles: 2 }, [], {}, {
+    subtypes: { texture: 'pores', wrinkles: 'static' },
+    combinationTreatments: ['포텐자', '리쥬란'],
+  });
+  const combined = plans.extended.find(({ combinationSource }) => combinationSource === 'physician');
+  assert.deepEqual(combined.treatments, ['포텐자', '리쥬란']);
+  assert.deepEqual(combined.categoryIds, ['texture', 'wrinkles']);
+  assert.equal(plans.extended.filter(({ combinationSource }) => combinationSource === 'physician').length, 1);
+  assert.equal(combined.components.length, 2);
+});
+
+test('deferred extended source reasons propagate to the whole physician combination', () => {
+  for (const [scores, subtypes, treatment] of [
+    [{ lifting: 2, texture: 2 }, { texture: 'pores' }, '포텐자'],
+    [{ lifting: 2, wrinkles: 2 }, { wrinkles: 'static' }, '리쥬란'],
+  ]) {
+    for (const preference of [{ approach: 'noninvasive' }, { downtime: 'minimal' }]) {
+      const selected = ['울쎄라피 프라임', treatment];
+      const plans = buildPlans(scores, [], {}, { ...preference, liftingCauses: ['fascia'], subtypes, combinationTreatments: selected });
+      assert.ok(plans.basic.some(({ treatments }) => treatments.includes('울쎄라피 프라임')));
+      assert.ok(!plans.extended.some(({ combinationSource }) => combinationSource === 'physician'));
+      const source = plans.deferred.find(({ kind, treatments }) => kind !== 'combination' && treatments.includes(treatment));
+      const combined = plans.deferred.find(({ combinationSource }) => combinationSource === 'physician');
+      assert.deepEqual(combined.treatments, selected);
+      assert.ok(combined.reason.includes(source.reason));
+      assert.match(combined.reason, /전체 조합을 보류/);
+      assert.ok(selected.every((label) => combined.title.includes(label)));
+    }
+  }
+});
+
+test('an active source remains usable when an unrelated source component is deferred', () => {
+  const plans = buildPlans({ lifting: 2, contour: 2 }, [], {}, {
+    liftingCauses: ['fascia'], approach: 'noninvasive',
+    combinationTreatments: ['울쎄라피 프라임', '온다'],
+  });
+  assert.ok(plans.deferred.some(({ treatments }) => treatments.includes('보톡스')));
+  assert.ok(plans.extended.some(({ kind, treatments }) => kind !== 'combination' && treatments.includes('온다')));
+  const combined = plans.extended.find(({ combinationSource }) => combinationSource === 'physician');
+  assert.deepEqual(combined.treatments, ['울쎄라피 프라임', '온다']);
+  assert.equal(combined.reason, undefined);
+  assert.doesNotMatch(combined.detail, /보톡스/);
+});
+
+test('an unregistered selection invalidates the entire manual combination instead of silently shrinking it', () => {
+  for (const invalid of ['미등록 장비', '', null, 123]) {
+    const plans = buildPlans({ lifting: 2, wrinkles: 2 }, [], {}, {
+      liftingCauses: ['fascia'], subtypes: { wrinkles: 'laxity' },
+      combinationTreatments: ['울쎄라피 프라임', '소프웨이브', invalid],
+    });
+    assert.ok(![...plans.extended, ...plans.deferred].some(({ combinationSource }) => combinationSource === 'physician'));
+    assert.deepEqual(plans.basic.flatMap(({ treatments }) => treatments), ['써마지 FLX', '소프웨이브', '울쎄라피 프라임']);
+  }
+});

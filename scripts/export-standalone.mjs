@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const dist = resolve(root, 'dist');
@@ -8,7 +8,20 @@ const script = html.match(/<script type="module" crossorigin src="([^"]+)"><\/sc
 const style = html.match(/<link rel="stylesheet" crossorigin href="([^"]+)">/);
 if (!script || !style) throw new Error('Expected a single bundled script and stylesheet.');
 const scriptText = await readFile(resolve(dist, script[1].replace(/^\//, '')), 'utf8');
-const styleText = await readFile(resolve(dist, style[1].replace(/^\//, '')), 'utf8');
+let styleText = await readFile(resolve(dist, style[1].replace(/^\//, '')), 'utf8');
+const assetUrls = [...styleText.matchAll(/url\((['"]?)([^'")]+)\1\)/g)];
+const mimeTypes = { '.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml' };
+const embeddedAssets = await Promise.all(assetUrls.map(async ([original, , url]) => {
+  if (url.startsWith('data:') || url.startsWith('#')) return [original, original];
+  if (/^(?:https?:)?\/\//.test(url)) throw new Error(`Standalone export requires a local asset: ${url}`);
+  const path = resolve(dist, url.replace(/^\//, ''));
+  if (!path.startsWith(`${dist}/`)) throw new Error(`Asset is outside the build directory: ${url}`);
+  const mime = mimeTypes[extname(path)];
+  if (!mime) throw new Error(`Unsupported standalone asset type: ${url}`);
+  const bytes = await readFile(path);
+  return [original, `url("data:${mime};base64,${bytes.toString('base64')}")`];
+}));
+for (const [original, embedded] of embeddedAssets) styleText = styleText.replaceAll(original, embedded);
 const icon = await readFile(resolve(root, 'public/favicon.svg'));
 html = html.replace(script[0], () => `<script type="module">${scriptText.replace(/<\/script/gi, '<\\/script')}</script>`);
 html = html.replace(style[0], () => `<style>${styleText}</style>`);

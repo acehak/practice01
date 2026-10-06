@@ -1,4 +1,5 @@
-import { ArrowRight, Layers } from 'lucide-react';
+import { ArrowRight, Check, Layers } from 'lucide-react';
+import { normalizeLiftingCauses } from '../domain.js';
 
 function TissueTarget({ type }) {
   const selected = { fascia: 34, ligament: 25, fat: 23, dermal: 13 }[type];
@@ -14,10 +15,12 @@ function TissueTarget({ type }) {
 }
 
 export default function ClinicProtocol({ protocol, profile, onSelect }) {
+  const selectedCauses = normalizeLiftingCauses(profile);
+  const skinTargets = [protocol.dermal, protocol.pronounced].filter(Boolean);
   return <section className="card clinic-protocol" aria-label="원인별 병원 상담 기준">
-    <div className="protocol-header"><span className="section-kicker">TARGET & TREATMENT</span><h3><Layers size={15}/>원인에서 선택지로</h3><p>진찰로 확인한 주된 원인을 선택하세요.</p></div>
-    <div className="protocol-map">{protocol.lifting.map(item => <button key={item.subtype} className={`protocol-link ${profile.subtypes.lifting === item.subtype ? 'active' : ''}`} aria-label={`${item.label}: ${item.treatment} 상담 기준 선택`} aria-pressed={profile.subtypes.lifting === item.subtype} onClick={() => onSelect('lifting', item.subtype)}><TissueTarget type={item.subtype}/><span className="protocol-target"><small>처짐 · 주된 원인</small><strong>{item.label}</strong><span className="protocol-device">{item.treatment}<ArrowRight size={11}/></span></span></button>)}</div>
-    {protocol.dermal && <button className={`protocol-link dermal-link ${profile.subtypes.wrinkles === protocol.dermal.subtype ? 'active' : ''}`} aria-label={`${protocol.dermal.label}: ${protocol.dermal.treatment} 상담 기준 선택`} aria-pressed={profile.subtypes.wrinkles === protocol.dermal.subtype} onClick={() => onSelect(protocol.dermal.categoryId, protocol.dermal.subtype)}><TissueTarget type="dermal"/><span className="protocol-target"><small>탄력·잔주름 · 피부</small><strong>{protocol.dermal.label}</strong><span className="protocol-device">{protocol.dermal.treatment}<ArrowRight size={11}/></span></span></button>}
-    <p className="protocol-footnote">{protocol.label} · 원인 선택과 관찰 점수는 별도로 기록합니다.</p>
+    <div className="protocol-header"><span className="section-kicker">CAUSE → CHOICE</span><h3><Layers size={15}/>원인에서 선택지로</h3><p>확인된 처짐 원인은 함께 선택할 수 있어요.</p></div>
+    <div className="protocol-map">{protocol.lifting.map(item => <button key={item.subtype} className={`protocol-link ${selectedCauses.includes(item.subtype) ? 'active' : ''}`} aria-label={`${item.label}: ${item.treatment} 상담 기준 선택`} aria-pressed={selectedCauses.includes(item.subtype)} onClick={() => onSelect('lifting', item.subtype)}><TissueTarget type={item.subtype}/><span className="protocol-target"><small>처짐 · 원인별 기본 후보</small><strong>{item.label}</strong><span className="protocol-device">{item.treatment}<ArrowRight size={11}/></span></span>{selectedCauses.includes(item.subtype) && <Check size={14}/>}</button>)}</div>
+    {skinTargets.map(item => <button key={item.subtype} className={`protocol-link dermal-link ${profile.subtypes.wrinkles === item.subtype ? 'active' : ''}`} aria-label={`${item.label}: ${item.treatment} 상담 기준 선택`} aria-pressed={profile.subtypes.wrinkles === item.subtype} onClick={() => onSelect(item.categoryId, item.subtype)}><TissueTarget type="dermal"/><span className="protocol-target"><small>탄력·주름 · 피부</small><strong>{item.label}</strong><span className="protocol-device">{item.subtype === 'pronounced' ? '소프웨이브 우선 검토' : '써마지 FLX · 소프웨이브'}<ArrowRight size={11}/></span></span></button>)}
+    <p className="protocol-footnote">{protocol.label} · 점수와 원인은 따로 기록합니다.</p>
   </section>;
 }
